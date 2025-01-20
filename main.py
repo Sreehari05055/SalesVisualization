@@ -1,87 +1,54 @@
+import json
+from datetime import datetime
+from pymongo import MongoClient
 import pandas as pd
 from prophet import Prophet
-from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
 
-# Connect to MySQL
-engine = create_engine('mysql+mysqlconnector://root:Bit4$ree%400505@localhost/SalesVisualization')
+with open('settings.json', 'r') as f:
+    config = json.load(f)
 
-# Fetch daily sales data
-query = """
-    SELECT 
-        DATE(OrderDate) AS OrderDay, 
-        SUM(TotalSales) AS DailyTotalSales 
-    FROM 
-        SalesTransactions 
-    GROUP BY 
-        OrderDay 
-    ORDER BY 
-        OrderDay;
-"""
+mongo_conn = config['mongodb']
 
-query1 = """SELECT
-                CustomerID,
-                LastShopDate
-            FROM Customers;"""
+client = MongoClient(mongo_conn['host'], mongo_conn['port'])
 
-# Load data
-sales_data = pd.read_sql(query, engine)
-customer_data = pd.read_sql(query1, engine)
+db = client[mongo_conn['database']]
+collection = db['WalmartData']
 
-# Ensure 'LastShopDate' is a datetime object
-customer_data['LastShopDate'] = pd.to_datetime(customer_data['LastShopDate'])
+# Fetch data
+corpora = collection.find({},{'_id':0,'Weekly_Sales':1, 'Date': 1})
 
-# Calculate 'DaysSinceLastShop' for each customer
-current_date = pd.to_datetime(sales_data['OrderDay'].max())
-customer_data['DaysSinceLastShop'] = (current_date - customer_data['LastShopDate']).dt.days
+sales_data = pd.DataFrame(list(corpora))
 
-# Aggregate 'DaysSinceLastShop' to daily averages
-avg_days_per_day = customer_data.groupby(customer_data['LastShopDate'].dt.date)['DaysSinceLastShop'].mean()
-avg_days_per_day = avg_days_per_day.rename_axis('OrderDay').reset_index()
-avg_days_per_day['OrderDay'] = pd.to_datetime(avg_days_per_day['OrderDay'])
+# Convert the 'Date' column from string to datetime format
+sales_data['Date'] = pd.to_datetime(sales_data['Date'], dayfirst=True)
 
-# Merge with sales data
-sales_data['OrderDay'] = pd.to_datetime(sales_data['OrderDay'])
-sales_with_factors = pd.merge(sales_data, avg_days_per_day, on='OrderDay', how='left')
+sales_data['Weekly_Sales'] = sales_data['Weekly_Sales'].astype(float)
 
-# Fill missing 'DaysSinceLastShop' with the overall average
-overall_avg_days = customer_data['DaysSinceLastShop'].mean()
-sales_with_factors['DaysSinceLastShop'].fillna(overall_avg_days, inplace=True)
+weekly_sales_data = sales_data.sort_values(by='Date')
+# Rename columns for modeling needs
+df = weekly_sales_data.rename(columns={'Date': 'ds', 'Weekly_Sales': 'y'})
 
-# Set missing dates in sales data
-sales_with_factors.set_index('OrderDay', inplace=True)
-sales_with_factors = sales_with_factors.asfreq('D', fill_value=0)
-sales_with_factors.reset_index(inplace=True)
-
-# Prepare data for Prophet
-sales_with_factors.columns = ['ds', 'y', 'DaysSinceLastShop']  # Prophet expects 'ds' and 'y'
-
-# Initialize the model and add the regressor
+# Initialize and fit the model
 model = Prophet()
-model.add_regressor('DaysSinceLastShop')  # Add external factor
+model.fit(df)
 
-# Fit the model
-model.fit(sales_with_factors)
-
-# Prepare future data
-future = model.make_future_dataframe(periods=30)  # Forecast for the next 30 days
-future = pd.merge(future, sales_with_factors[['ds', 'DaysSinceLastShop']], on='ds', how='left')
-
-# Fill missing values for 'DaysSinceLastShop' in the future with the overall average
-future['DaysSinceLastShop'].fillna(overall_avg_days, inplace=True)
-
-# Predict
+# Make future predictions
+future = model.make_future_dataframe(periods=365)  # Forecast
 forecast = model.predict(future)
 
 # Plot the forecast
 fig = model.plot(forecast)
 
-# Customize the plot
-plt.title('Sales Forecast with External Factors', fontsize=14, fontweight='bold')
-plt.xlabel('Date', fontsize=12)
-plt.ylabel('Sales Amount', fontsize=12)
 
-# Save the plot
-fig.savefig('forecast_with_regressor.png')
+plt.title('Sales Forecast', fontsize=14, fontweight='bold')
+plt.xlabel('Date (YY-mm)', fontsize=12)
+plt.ylabel('Sales Amount (10^6 M)', fontsize=12)
+
+specific_dates = ['2013-10-01']  # Add the dates
+specific_forecast = forecast[forecast['ds'].isin(specific_dates)]
+
+print(specific_forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
 
 plt.show()
+
