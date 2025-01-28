@@ -1,19 +1,14 @@
-import json
-from datetime import datetime
+import os
 from pymongo import MongoClient
 import pandas as pd
 from prophet import Prophet
 import matplotlib.pyplot as plt
 
-with open('settings.json', 'r') as f:
-    config = json.load(f)
+mongodb_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017/")
+client = MongoClient(mongodb_uri)
 
-mongo_conn = config['mongodb']
-
-client = MongoClient(mongo_conn['host'], mongo_conn['port'])
-
-db = client[mongo_conn['database']]
-collection = db['WalmartData']
+db = client["Walmart"]
+collection = db["WalmartData"]
 
 # Fetch data
 corpora = collection.find({},{'_id':0,'Weekly_Sales':1, 'Date': 1})
@@ -49,6 +44,8 @@ specific_dates = ['2013-10-01']  # Add the dates
 specific_forecast = forecast[forecast['ds'].isin(specific_dates)]
 
 print(specific_forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
+
+plt.savefig('sales_forecast.png', format='png')
 
 plt.show()
 
