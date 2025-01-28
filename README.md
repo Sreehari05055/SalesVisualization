@@ -12,12 +12,10 @@ This project visualizes sales forecast data using the Prophet model and generate
 ## Requirements
 
 - Docker (for containerized setup)
-- Docker Compose (for managing multi-container applications)
-- Python 3.10 (for building the Docker image)
+- Docker Compose (for managing multiple containers)
+- Python 3.10 (for building Docker image)
 
 ## Installation
-
-To run this project with Docker, follow the steps below:
 
 ### 1. Clone the repository
 
