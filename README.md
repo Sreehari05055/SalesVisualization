@@ -26,12 +26,3 @@ Clone this repository to your local machine.
 ```bash
 git clone https://github.com/Sreehari05055/SalesVisualization.git
 cd SalesVisualization
-
-### 2. Build and Run the Docker Containers
-
-1. **Build the Docker containers**:
-
-   In the root directory of the project, run the following command to build the Docker images for both the app and MongoDB services:
-   
-   ```bash
-   docker-compose build
